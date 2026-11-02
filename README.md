@@ -10,6 +10,8 @@ ALOHA と同じ枠組みの化学物質拡散シミュレーター。
 - 物質・基準値：15 物質の AEGL・PAC・ERPG・IDLH・許容濃度・管理濃度。PubChem から現行値を取得して照合、他の物質も検索
 - 用語集・計算方法・出典
 
+公開ページ：https://stateishidohc.github.io/chem-disaster-portal/
+
 ## 起動
 
 ```

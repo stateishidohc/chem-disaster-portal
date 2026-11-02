@@ -4,6 +4,12 @@
 ALOHA（NOAA/EPA）と同じ枠組みの化学物質拡散シミュレーター・爆風圧の目安を 1 つにまとめた静的 PWA（ビルドなし）。
 もとになった研修：令和7年度 産業医科大学 産業医学実践研修（2026年2月8日、上野・中原・真鍋・長谷川・立石）。
 
+## 公開
+
+- https://stateishidohc.github.io/chem-disaster-portal/（GitHub Pages、stateishidohc/chem-disaster-portal の main のルート）。
+  **push すると公開ページが更新される**。push 前に `node tests/model.test.js` を通し、`sw.js` の `CACHE`・`index.html` の `?v=`・`js/app.js` の `APP_VERSION` を上げる。
+- 複数の PC で編集する場合は、作業開始時に `git pull`、終了時に commit・push。
+
 ## ユーザーについて
 
 - 産業医科大学 災害産業保健センターの産業保健研究者（立石清一郎）。**返答は必ず日本語**。
