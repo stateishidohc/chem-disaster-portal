@@ -2,7 +2,7 @@
    - アプリ本体はネットワーク優先（更新をすぐ反映）、圏外ではキャッシュで動く
    - 地図ライブラリ（CDN）はキャッシュ優先。地図タイル・PubChem はキャッシュしない
    更新時は CACHE 名を上げる */
-const CACHE = "cdportal-v1.1.0";
+const CACHE = "cdportal-v1.1.1";
 const ASSETS = [
   "./", "./index.html", "./manifest.json", "./css/style.css",
   "./data/sources.js", "./data/chemicals.js", "./data/glossary.js", "./data/lessons.js", "./data/case.js",
