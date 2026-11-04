@@ -4,7 +4,7 @@
   const M = window.CDModel, D = window.CDDisp;
   const $ = (s, r = document) => r.querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const KEY = "cd-sim-v1";
+  const KEY = "cd-sim-v2";   // v1 は旧ケース（v1.0.2 まで）の入力
 
   const DIRS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"];
   const dirName = deg => DIRS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
@@ -15,24 +15,28 @@
     office: "事務所ビル（換気回数 0.5 回/h）", ach: "換気回数を直接入力",
   };
 
-  // 研修ケース：折尾ケミカル西工場（架空）。地点は発生源からの東西・南北の距離 [m]
-  const CASE_ORIO = {
-    title: "研修ケース：折尾ケミカル西工場 アンモニア漏えい（架空）",
-    chemId: "ammonia", srcType: "liquefied",
-    src: { mass: 20000, TstoreC: 5, holeD: 50, path: "pipe", airborneRule: "all", dikeArea: 0, pressure: 10, volume: 1, rate: 1, durationMin: 10, releaseHeight: 0, liquidHead: 0 },
-    met: { u: 3, zRef: 10, dirFrom: 315, TambC: 5, cloud: 5, terrain: "open", stab: "auto", dateLocal: "2026-02-08T13:10", lat: 33.88, lon: 130.70, lid: 0 },
+  // ケース演習：東浜ソーダ工業 臨海工場（架空、data/case.js）。地点は発生源からの東西・南北の距離 [m]（東・北が正）
+  // 弁の破損口径 15 mm と地表（市街地）は仮定。緯度経度は日射の計算用の仮置きで、実在の事業所とは関係ない。
+  const CASE_DEFAULT = {
+    title: "ケース演習：東浜ソーダ工業 臨海工場 液化塩素漏えい（架空）",
+    chemId: "chlorine", srcType: "liquefied",
+    src: { mass: 1000, TstoreC: 27, holeD: 15, path: "hole", airborneRule: "all", dikeArea: 0, pressure: 10, volume: 1, rate: 1, durationMin: 10, releaseHeight: 0, liquidHead: 0 },
+    met: { u: 2.5, zRef: 10, dirFrom: 180, TambC: 27, cloud: 7, terrain: "urban", stab: "auto", dateLocal: "2026-08-20T22:40", lat: 33.70, lon: 130.75, lid: 0 },
     loc: { family: "auto", minutes: 60, custom: [null, null, null] },
     model: "auto",
     receptors: [
-      { name: "A 冷凍設備西側", dx: -90, dy: -20, b: { type: "single", sheltered: false, ach: 1 } },
-      { name: "B 事務棟北側交差点", dx: -170, dy: 170, b: { type: "office", sheltered: false, ach: 0.5 } },
-      { name: "C 正門西側空地", dx: -230, dy: -220, b: { type: "single", sheltered: false, ach: 1 } },
-      { name: "風下の住宅地（1.5 km）", dx: 1060, dy: -1060, b: { type: "single", sheltered: false, ach: 1 } },
+      { name: "A 北門の駐車場", dx: -60, dy: 400, b: { type: "single", sheltered: false, ach: 1 } },
+      { name: "B 正門の守衛所前", dx: 30, dy: -350, b: { type: "office", sheltered: false, ach: 0.5 } },
+      { name: "C 東側の資材倉庫前", dx: 320, dy: 20, b: { type: "single", sheltered: false, ach: 1 } },
+      { name: "工場棟（夜勤者 30 名）", dx: 20, dy: 180, b: { type: "office", sheltered: false, ach: 0.5 } },
+      { name: "住宅地（北 2 km）", dx: 150, dy: 2000, b: { type: "double", sheltered: false, ach: 1 } },
+      { name: "介護施設（北 3.5 km）", dx: 500, dy: 3450, b: { type: "double", sheltered: false, ach: 1 } },
     ],
     base: "none",
   };
 
-  let st = load() || clone(CASE_ORIO);
+  try { localStorage.removeItem("cd-sim-v1"); } catch (e) { /* 旧版の保存値の片づけ。できなくても動く */ }
+  let st = load() || clone(CASE_DEFAULT);
   let map = null, layers = null, last = null;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -46,7 +50,7 @@
 
   /* ---------- 入力フォーム ---------- */
   function render(root) {
-    st = load() || clone(CASE_ORIO);
+    st = load() || clone(CASE_DEFAULT);
     fitNext = true;
     root.innerHTML = `
     <h2 class="page">化学物質拡散シミュレーター</h2>
@@ -75,8 +79,8 @@
     const s = st.src, m = st.met;
     $("#simForm").innerHTML = `
     <div class="card"><div class="card-h">ケース</div><div class="card-b">
-      <div class="seg"><button type="button" class="btn sm ghost" id="btnCase">研修ケース（折尾ケミカル）を読み込む</button></div>
-      <p class="hint">2026年2月8日の実践研修で使った架空の事例です（アンモニア 20 t タンクの配管破断、北西の風 3 m/s、気温 5 ℃）。配管の口径は資料にないため 50 mm と仮定しています。</p>
+      <div class="seg"><button type="button" class="btn sm ghost" id="btnCase">ケース演習（東浜ソーダ工業）を読み込む</button></div>
+      <p class="hint">ケース演習の架空の事例です（液化塩素 1 t 容器の弁の破損、夏の夜 22:40、南の風 2.5 m/s、気温 27 ℃、雲量 7 割）。弁の破損口径 15 mm と地表（市街地）は仮定です。</p>
     </div></div>
 
     <div class="card"><div class="card-h"><span class="step">1</span>物質</div><div class="card-b">
@@ -212,7 +216,7 @@
     f.onclick = e => {
       const b = e.target.closest("button");
       if (!b) return;
-      if (b.id === "btnCase") { st = clone(CASE_ORIO); renderForm(); fitNext = true; compute(); return; }
+      if (b.id === "btnCase") { st = clone(CASE_DEFAULT); renderForm(); fitNext = true; compute(); return; }
       if (b.id === "addR") { st.receptors.push({ name: "地点 " + (st.receptors.length + 1), dx: 500, dy: 0, b: { type: "single", sheltered: false, ach: 1 } }); renderReceptorList(); compute(); return; }
       if (b.dataset.del !== undefined) { st.receptors.splice(+b.dataset.del, 1); renderReceptorList(); compute(); return; }
       const seg = b.closest("[data-seg]");

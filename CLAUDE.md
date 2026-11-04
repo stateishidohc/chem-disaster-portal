@@ -38,7 +38,7 @@ js/app.js             ルーター、ホーム・学ぶ・ケース演習・物�
 data/sources.js       出典一覧（id で参照）
 data/chemicals.js     15 物質の基準値・物性・健康影響
 data/lessons.js       学習モジュール 8 本＋確認問題
-data/case.js          ケース演習（折尾ケミカル、架空）
+data/case.js          ケース演習（東浜ソーダ工業の液化塩素漏えい、架空。研修で使う事例とは別。数値は sim-ui.js の CASE_DEFAULT の推計にそろえる）
 data/glossary.js      用語集
 tests/model.test.js   計算エンジンの検査（node tests/model.test.js）
 sw.js / manifest.json PWA。更新時は sw.js の CACHE と index.html の ?v= を上げる

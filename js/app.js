@@ -3,7 +3,7 @@
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const APP_VERSION = "1.0.2";
+  const APP_VERSION = "1.1.0";
   const PKEY = "cd-learn-v1";
   const M = window.CDModel, D = window.CDDisp;
 
@@ -52,7 +52,7 @@
         <div class="seg" style="margin-top:8px"><a class="btn sm" href="#/sim">拡散の推計</a><a class="btn sm ghost" href="#/chem">基準値を引く</a><a class="btn sm ghost" href="#/learn/first120">初動の型</a></div></div>
       <div class="cards" style="margin-top:16px">
         <a class="tile" href="#/learn"><span class="tag">E-LEARNING</span><b>学ぶ（8 モジュール）</b><span>化学災害の基礎、基準値の使い分け、最初の 120 分、ゾーニングと除染、医療連携、リハブ、平時の備え、拡散予測の読み方。修了 ${done}/${CD.LESSONS.length}</span></a>
-        <a class="tile" href="#/case"><span class="tag">CASE</span><b>ケース演習</b><span>折尾ケミカル西工場のアンモニア漏えい爆発（架空）。Phase I〜III の判断を選んで振り返る。</span></a>
+        <a class="tile" href="#/case"><span class="tag">CASE</span><b>ケース演習</b><span>夏の夜、ソーダ工場の爆発で液化塩素が漏えい（架空）。電話での初動支援から搬送まで、Phase I〜IV の判断を選んで振り返る。</span></a>
         <a class="tile" href="#/sim"><span class="tag">SIMULATOR</span><b>拡散シミュレーター</b><span>ALOHA と同じ枠組みで、脅威ゾーンと地点ごとの屋内外の濃度を推計。重いガスにも対応。</span></a>
         <a class="tile" href="#/blast"><span class="tag">BLAST</span><b>爆風圧の目安</b><span>蒸気雲爆発・爆発物の TNT 換算で、窓ガラス破損・重傷・建物倒壊の範囲を推計。</span></a>
         <a class="tile" href="#/chem"><span class="tag">DATA</span><b>物質・基準値</b><span>15 物質の AEGL・PAC・ERPG・IDLH・許容濃度。PubChem から現行値を取得して差分を確認。他の物質も検索可。</span></a>
@@ -119,7 +119,7 @@
   /* ---------- ケース演習 ---------- */
   function caseView(v) {
     const C = CD.CASE;
-    v.innerHTML = `<div class="narrow"><h2 class="page">ケース演習</h2><p class="lead">${esc(C.title)}。実践研修のケースシナリオを、選択と振り返りの形にしました。</p>
+    v.innerHTML = `<div class="narrow"><h2 class="page">ケース演習</h2><p class="lead">${esc(C.title)}。実践研修のケース演習の形式にならって作った架空の事例です。選んで、振り返り、シミュレーターで確かめます。</p>
       <div class="card"><div class="card-h">事例の背景と初期情報</div><div class="card-b">${C.setting}
         <div class="note crit" style="margin-top:12px"><b>産業医の絶対ルール</b>：現場（ホットゾーン）に行かない。コールドゾーン（安全域）で医療情報のハブとなり、指揮官の判断を医学的に支える。</div></div></div>
       ${C.phases.map(ph => `<div class="card"><div class="card-h">${esc(ph.title)}</div><div class="card-b">
@@ -143,7 +143,7 @@
         box.querySelectorAll(".opts button").forEach((bb, jj) => { bb.disabled = true; if (jj === t.a) bb.classList.add("ok"); else if (jj === j) bb.classList.add("ng"); });
       };
     });
-    v.querySelectorAll("[data-loadcase]").forEach(a => a.onclick = () => { try { localStorage.removeItem("cd-sim-v1"); } catch (e) { /* 既定のケースで開く */ } });
+    v.querySelectorAll("[data-loadcase]").forEach(a => a.onclick = () => { try { localStorage.removeItem("cd-sim-v2"); } catch (e) { /* 既定のケースで開く */ } });
   }
 
   /* ---------- 物質・基準値 ---------- */
@@ -230,7 +230,7 @@
       try { const r = await window.CDLive.lookup(String(c.cid)); $("#liveRes").innerHTML = liveHtml(r, c); }
       catch (e) { $("#liveRes").innerHTML = `<p class="small" style="color:var(--crit)">取得できませんでした（${esc(e.message)}）。</p>`; }
     };
-    $("#toSim").onclick = () => { try { const s = JSON.parse(localStorage.getItem("cd-sim-v1")); if (s) { s.chemId = c.id; localStorage.setItem("cd-sim-v1", JSON.stringify(s)); } } catch (e) { /* 既定値で開く */ } };
+    $("#toSim").onclick = () => { try { const s = JSON.parse(localStorage.getItem("cd-sim-v2")); if (s) { s.chemId = c.id; localStorage.setItem("cd-sim-v2", JSON.stringify(s)); } } catch (e) { /* 既定値で開く */ } };
   }
 
   /* ---------- 爆風圧 ---------- */
