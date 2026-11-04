@@ -48,6 +48,14 @@
     return { id: "custom", ja: c.ja || "その他の物質", en: c.en || "", cas: c.cas || "", mw: +c.mw || 50, antoine: [], forms: ["direct"], aegl: null, pac: c.pac || [null, null, null], erpg: null, idlh: c.idlh || null };
   }
 
+  // 免責事項（画面上部・結果の末尾・コピー／印刷される助言文で同じ文を使う）
+  const DISCLAIMER = [
+    "この結果は、入力した条件と仮定にもとづくシミュレーション（計算上の推計）です。実際の濃度の分布は、風向・風速の変化、建物・地形、火災の上昇気流、放出量・放出時間の不確かさなどにより、推計と大きく異なることがあります。",
+    "避難・屋内退避・立入禁止などの防護措置の最終判断は、事業者（現場の指揮者）が、消防・行政などの関係機関や専門家と協議し、検知器による実測値を踏まえて行ってください。",
+    "本アプリは判断を支援するための教育・訓練用の道具です。結果だけを根拠に行動を決めないでください。作成者は、この結果を用いた判断や行動の結果について責任を負いません。",
+  ];
+  const disclaimerHtml = (cls = "") => `<div class="note crit disclaimer ${cls}"><b>免責事項：あくまでもシミュレーションです</b><ul class="list small">${DISCLAIMER.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
+
   /* ---------- 入力フォーム ---------- */
   function render(root) {
     st = load() || clone(CASE_DEFAULT);
@@ -56,6 +64,7 @@
     <h2 class="page">化学物質拡散シミュレーター</h2>
     <p class="lead small">ALOHA（NOAA/EPA）と同じ考え方で、漏えい・爆発で放出された化学物質が風下へどこまで広がるかを推計します。
       計算式と係数はすべて出典つきで、<a href="#/method">計算方法</a>にまとめています。<b>結果は防護措置を考えるための目安で、実測値を優先してください。</b></p>
+    ${disclaimerHtml()}
     <p class="noprint mobile-only"><button type="button" class="btn sm ghost" onclick="document.getElementById('simOut').scrollIntoView({behavior:'smooth'})">結果（地図・濃度）へ移動 ↓</button></p>
     <div class="sim-grid">
       <div class="sim-side noprint" id="simForm"></div>
@@ -314,6 +323,7 @@
       <div class="kpi"><div class="k">空中への最大放出率</div><div class="v">${fmt(maxQ)} <small>kg/s</small></div>
         <div class="xs muted">60 分間の放出量 ${fmt(src.airborne)} kg</div></div>
     </div>
+    ${zoneActionsHtml()}
     <div class="card"><div class="card-h">指揮官への助言（たたき台）</div><div class="card-b">
       <div class="advice" id="advice">${esc(adviceText())}</div>
       <div class="seg" style="margin-top:8px"><button type="button" class="btn sm ghost" id="copyAdv">コピー</button><button type="button" class="btn sm ghost" onclick="window.print()">印刷</button></div>
@@ -336,9 +346,57 @@
         <li>重いガスは ALOHA の DEGADIS 系モデルではなく、HSE の作業手引き（Britter & McQuaid 1988）で計算します。液だまりの蒸発は EPA RMP の簡易式で、ALOHA の熱収支モデルより粗い近似です。</li>
         <li>結果は ALOHA の出力と一致するものではありません。正式な計画・評価には ALOHA 等の検証済みソフトウェアを使ってください。</li>
       </ul></details>
-    </div></div>`;
+    </div></div>
+    ${disclaimerHtml()}`;
     drawMap();
     $("#copyAdv").onclick = () => { navigator.clipboard && navigator.clipboard.writeText($("#advice").textContent); };
+  }
+
+  /* ---------- ゾーンごとの推奨行動 ----------
+   * 一般的な化学災害対応の原則（研修資料、ERG2024 の防護措置、AEGL の定義、ALOHA の屋内退避モデル）を、
+   * 計算した範囲・物質の性質に合わせて並べたもの。事業場の計画・指揮者の判断を置き換えるものではない。 */
+  function zoneActionsHtml() {
+    const { inp, sim, L } = last;
+    const c = inp.chem;
+    const down = dirName(inp.met.dirFrom + 180);
+    const heavy = sim.model === "dense" || c.mw > 29;
+    const conf = (sim.alpha * 180 / Math.PI).toFixed(0);
+    const rng = l => !l || !l.zone ? "基準値が未設定" : l.zone.length > 0 ? `発生源から風下（${down}）${l.zone.truncated ? "10 km 以上" : "約 " + fmtD(l.zone.length)}まで` : "計算上は到達しない";
+    const lv = n => L.find(l => l.level === n);
+    const head = (n, title) => { const l = lv(n); return `<div class="zact-h"><span class="zact-tag" style="background:var(--z${n})${n === 1 ? ";color:#222" : ""}">レベル ${n}</span><b>${title}</b><span class="xs muted">${l ? esc(l.name) + (l.ppm != null ? " " + fmt(l.ppm) + " ppm 以上" : "") + "／" + rng(l) : ""}</span></div>`; };
+    const why = c.mw > 29 ? "空気より重いガスなので" : "冷えた重い雲として地表を這う計算なので";
+    const shelter = `窓・扉を閉め、換気扇・空調を止め、すき間をふさぐ${heavy ? `。${why}、地下・1 階を避けて上の階の、できるだけ窓の少ない部屋へ` : "。窓の少ない部屋へ"}`;
+    const idlh = c.idlh ? `IDLH（${fmt(c.idlh)} ppm）を超えうるため、` : "";
+    const flam = c.lel ? `<li>可燃性（爆発下限 ${c.lel}%）：着火源を断つ（火気厳禁、可能なら離れた場所で電源を切る）。爆発のおそれは「爆風圧」ページで確認。</li>` : "";
+    return `<div class="card"><div class="card-h">ゾーンごとの推奨行動（目安）</div><div class="card-b">
+      <p class="small">計算した脅威ゾーンに沿って、一般的に推奨される行動を整理しました。<b>実際の範囲は推計と異なりうるため、境界には余裕をもたせ、実測値で見直してください。</b></p>
+      <div class="zact" style="border-color:var(--z3)">${head(3, "生命に危険：立入禁止区域（ホットゾーンに相当）")}
+        <ul class="list small">
+          <li><b>立入</b>：原則として立入禁止。救助・漏えいの停止は、${idlh}空気呼吸器（SCBA）と化学防護服を着けた訓練済みの隊員だけがバディで行う。進入・退出の時刻を記録する。産業医・看護職・一般の従業員は入らない。</li>
+          <li><b>区域内の人</b>：雲が来ている、またはすぐ来るなら外へ出ず屋内退避（${shelter}）。雲が届く前に、風上か風横へ確実に移れるときだけ退避させる（風下へは逃げない）。点呼で所在不明者を把握する。</li>
+          <li><b>医療</b>：この区域から出てきた人は高濃度にばく露したものとして扱う。脱衣（液体の付着は流水で洗う）のあと重症度を評価し、優先して搬送する。</li>
+          ${flam}
+        </ul></div>
+      <div class="zact" style="border-color:var(--z2)">${head(2, "不可逆的な影響・避難が困難：防護措置の中心となる区域")}
+        <ul class="list small">
+          <li><b>従業員・住民</b>：屋内退避を基本とする（${shelter}）。雲が届くまで時間があり、安全な経路で風上・風横へ移れるときは避難も選択肢。夜間・悪天候・要配慮者は、外へ出すとかえってばく露しやすい。</li>
+          <li><b>連絡</b>：学校・病院・介護施設などの要配慮者施設に個別に連絡する。自治体・消防と広報の文面をそろえる。</li>
+          <li><b>解除</b>：雲が通り過ぎたら、閉め切った屋内の方が屋外より濃くなる時間帯がある。屋外の濃度の低下を実測で確かめ、窓を開けて換気し、地区ごとに屋内退避を解除する。</li>
+          <li><b>対応者</b>：境界付近に検知器を置き、範囲を実測で見直す。この区域で活動する場合も呼吸用保護具を着用する（濃度がわからなければ SCBA）。</li>
+        </ul></div>
+      <div class="zact" style="border-color:var(--z1)">${head(1, "不快・刺激：注意喚起と相談対応の区域")}
+        <ul class="list small">
+          <li><b>住民・従業員</b>：屋外での活動を控え、窓を閉めるよう広報する。においや刺激で気づくことが多いが、においの有無で安全を判断しない。</li>
+          <li><b>相談・受診</b>：においの苦情や受診の相談が増える。相談窓口と受診先を案内し、症状のある人は新鮮な空気の場所へ移し、眼は流水で洗う。</li>
+        </ul></div>
+      <div class="zact" style="border-color:var(--good)"><div class="zact-h"><span class="zact-tag" style="background:var(--good)">区域外</span><b>風上・風横の安全な区域（コールドゾーンの候補）</b><span class="xs muted">信頼線（±${conf}°）の外側</span></div>
+        <ul class="list small">
+          <li><b>拠点</b>：指揮所・救護所・除染区画・リハブ区画は、風上または風横で、信頼線の外に置く。風向が変わったときの移動先を決めておく。</li>
+          <li><b>産業保健</b>：産業医・看護職はここで医療情報のハブになる。ばく露者リスト（氏名・いた場所と時間・症状・処置）を作り、受入病院に物質名・ばく露の状況・除染の状況を伝える。対応者のリハブと健康状態を管理する。</li>
+          ${c.first ? `<li><b>${esc(c.ja)}の応急処置の要点</b>：${esc(c.first)}</li>` : ""}
+        </ul></div>
+      <p class="hint">出典：研修資料（ゾーニング・産業医の役割）、ERG2024（屋内退避と避難）、AEGL の定義（EPA）、ALOHA の屋内退避モデル（Wilson 1987）。詳しくは<a href="#/learn/zoning">ゾーニング・防護・除染</a>と<a href="#/learn/first120">最初の 120 分</a>。</p>
+    </div></div>`;
   }
 
   function rcptHtml(o, i) {
@@ -421,6 +479,7 @@
       lines.push(`・${o.r.name}：屋外最大 ${fmt(p)} ppm、屋内（換気 ${o.res.ach.toFixed(1)} 回/h）最大 ${fmt(pi)} ppm、到達は発災後 約 ${Math.round((o.res.arrival || 0) / 60)} 分。`);
     }
     lines.push("※推計値。検知器の実測値・風向の変化で随時見直す。");
+    lines.push("【免責】" + DISCLAIMER.join(""));
     return lines.join("\n");
   }
 
