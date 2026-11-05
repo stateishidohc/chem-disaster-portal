@@ -33,7 +33,7 @@ js/model.js           気象・拡散幅・ガウスプルーム・発生源・�
 js/dense.js           重いガス（Britter & McQuaid 1988）
 js/dispersion.js      モデル選択（Ri）・脅威ゾーン・地点の時系列・LOC の選び方
 js/live.js            PubChem PUG-View から AEGL・PAC・ERPG・IDLH を取得（逐次・再試行）
-js/sim-ui.js          シミュレーター画面（Leaflet＋地理院タイル）
+js/sim-ui.js          シミュレーター画面（Leaflet＋地理院タイル）。練習用ケース 3 つは CASES（数値は README の表にそろえる）
 js/app.js             ルーター、ホーム・学ぶ・ケース演習・物質・爆風圧・用語集・計算方法・出典
 data/sources.js       出典一覧（id で参照）
 data/chemicals.js     15 物質の基準値・物性・健康影響

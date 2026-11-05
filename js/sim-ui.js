@@ -4,7 +4,7 @@
   const M = window.CDModel, D = window.CDDisp;
   const $ = (s, r = document) => r.querySelector(s);
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const KEY = "cd-sim-v2";   // v1 は旧ケース（v1.0.2 まで）の入力
+  const KEY = "cd-sim-v3";   // v1・v2 は旧版（v1.2.x まで。開くとケースが読み込まれていた）の入力
 
   const DIRS = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"];
   const dirName = deg => DIRS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
@@ -15,28 +15,104 @@
     office: "事務所ビル（換気回数 0.5 回/h）", ach: "換気回数を直接入力",
   };
 
-  // ケース演習：東浜ソーダ工業 臨海工場（架空、data/case.js）。地点は発生源からの東西・南北の距離 [m]（東・北が正）
-  // 弁の破損口径 15 mm と地表（市街地）は仮定。緯度経度は日射の計算用の仮置きで、実在の事業所とは関係ない。
-  const CASE_DEFAULT = {
-    title: "ケース演習：東浜ソーダ工業 臨海工場 液化塩素漏えい（架空）",
-    chemId: "chlorine", srcType: "liquefied",
-    src: { mass: 1000, TstoreC: 27, holeD: 15, path: "hole", airborneRule: "all", dikeArea: 0, pressure: 10, volume: 1, rate: 1, durationMin: 10, releaseHeight: 0, liquidHead: 0 },
-    met: { u: 2.5, zRef: 10, dirFrom: 180, TambC: 27, cloud: 7, terrain: "urban", stab: "auto", dateLocal: "2026-08-20T22:40", lat: 33.70, lon: 130.75, lid: 0 },
-    loc: { family: "auto", minutes: 60, custom: [null, null, null] },
-    model: "auto",
-    receptors: [
-      { name: "A 北門の駐車場", dx: -60, dy: 400, b: { type: "single", sheltered: false, ach: 1 } },
-      { name: "B 正門の守衛所前", dx: 30, dy: -350, b: { type: "office", sheltered: false, ach: 0.5 } },
-      { name: "C 東側の資材倉庫前", dx: 320, dy: 20, b: { type: "single", sheltered: false, ach: 1 } },
-      { name: "工場棟（夜勤者 30 名）", dx: 20, dy: 180, b: { type: "office", sheltered: false, ach: 0.5 } },
-      { name: "住宅地（北 2 km）", dx: 150, dy: 2000, b: { type: "double", sheltered: false, ach: 1 } },
-      { name: "介護施設（北 3.5 km）", dx: 500, dy: 3450, b: { type: "double", sheltered: false, ach: 1 } },
-    ],
-    base: "none",
-  };
+  // 地点は発生源を原点とした東西・南北の距離 [m]（東・北がプラス、西・南がマイナス）。
+  // 緯度経度は日射の計算用の仮置きで、実在の事業所とは関係ない。ケースの事業所名はすべて架空。
+  const SRC0 = { mass: 1000, TstoreC: 20, holeD: 10, path: "hole", airborneRule: "all", dikeArea: 0, pressure: 10, volume: 1, rate: 1, durationMin: 10, releaseHeight: 0, liquidHead: 0 };
+  const MET0 = { u: 3, zRef: 10, dirFrom: 270, TambC: 20, cloud: 5, terrain: "open", stab: "auto", dateLocal: "", lat: 33.70, lon: 130.75, lid: 0 };
+  const LOC0 = { family: "auto", minutes: 60, custom: [null, null, null] };
+  const bld = (type, ach) => ({ type, sheltered: false, ach: ach || 1 });
+  const mk = o => ({ chemId: o.chemId, srcType: o.srcType, src: Object.assign({}, SRC0, o.src), met: Object.assign({}, MET0, o.met), loc: clone(LOC0), model: "auto", receptors: o.receptors, base: "none" });
 
-  try { localStorage.removeItem("cd-sim-v1"); } catch (e) { /* 旧版の保存値の片づけ。できなくても動く */ }
-  let st = load() || clone(CASE_DEFAULT);
+  // シミュレーターで読み込めるケース（いずれも架空）。summary・points の記述は推計値（README の「シミュレーターのケース」）にそろえる。
+  // 東浜は data/case.js のケース演習と同じ条件。計算式や係数を変えたら、3 ケースの数値と記述を見直す
+  const CASES = [
+    {
+      id: "tohama", label: "① 液化塩素（夏の夜）",
+      title: "東浜ソーダ工業 臨海工場 夜間の液化塩素漏えい（架空）",
+      summary: "夏の夜 22:40、液化塩素 1 t 容器の弁が破損し、塩素が噴き出した。南の風 2.5 m/s、気温 27 ℃、雲量 7 割。風下（北）約 180 m に工場棟（夜勤者 30 名）、2 km に住宅地、3.5 km に介護施設がある。",
+      assume: "弁の破損口径 15 mm と地表（市街地）は仮定です。",
+      points: [
+        "夜は大気が安定し、同じ漏えいでも昼よりゾーンが長くなる。日時を 14:00 に変えて比べる。",
+        "工場棟・住宅地の屋内の濃度は屋外よりずっと低い。屋内退避の効果と、雲が通り過ぎた後に換気する時期を考える。",
+        "救護所・指揮所を置ける場所（風上の正門 B、風横の倉庫 C）を地図で確かめる。",
+      ],
+      more: `<a href="#/case">ケース演習</a>で Phase I〜IV の判断を詳しく扱います。`,
+      state: mk({
+        chemId: "chlorine", srcType: "liquefied",
+        src: { mass: 1000, TstoreC: 27, holeD: 15, path: "hole" },
+        met: { u: 2.5, dirFrom: 180, TambC: 27, cloud: 7, terrain: "urban", dateLocal: "2026-08-20T22:40" },
+        receptors: [
+          { name: "A 北門の駐車場", dx: -60, dy: 400, b: bld("single") },
+          { name: "B 正門の守衛所前", dx: 30, dy: -350, b: bld("office", 0.5) },
+          { name: "C 東側の資材倉庫前", dx: 320, dy: 20, b: bld("single") },
+          { name: "工場棟（夜勤者 30 名）", dx: 20, dy: 180, b: bld("office", 0.5) },
+          { name: "住宅地（北 2 km）", dx: 150, dy: 2000, b: bld("double") },
+          { name: "介護施設（北 3.5 km）", dx: 500, dy: 3450, b: bld("double") },
+        ],
+      }),
+    },
+    {
+      id: "hf", label: "② フッ化水素（冬の朝）",
+      title: "北汐フッ素化学 工場 無水フッ化水素の防液堤内への流出（架空）",
+      summary: "冬の朝 08:30、無水フッ化水素の貯槽につながる受入配管のフランジが破損し、約 3 t が防液堤（50 m²）に流れ出て蒸発している。北西の風 4 m/s、気温 8 ℃、雲量 8 割。風下（南東）約 100 m に隣の製造棟（作業者 40 名）、1.2 km に中学校、2 km に住宅地がある。",
+      assume: "流出量 3 t、防液堤の面積 50 m²、液温 10 ℃、地表（市街地）は仮定です。フッ化水素の蒸気は会合して実際より重くふるまいますが、本アプリは単量体として計算します。",
+      points: [
+        "蒸発が 1 時間以上続くため、隣の製造棟では屋内の濃度も AEGL-3 を超える。屋内退避を続けるか、風横（北東・南西）へ避難させるかを考える。",
+        "防液堤の面積を 100 m² に変えると、蒸発量とゾーンがどう変わるか。液面を小さく保つ・泡で覆う対策の意味を考える。",
+        "皮膚に付いた人の除染、グルコン酸カルシウムゼリーの準備、受入病院に伝えること（血清カルシウム・カリウムと心電図の監視）を考える。",
+      ],
+      more: `物質の性質と応急処置は<a href="#/chem/hydrogen_fluoride">フッ化水素のページ</a>を参照。`,
+      state: mk({
+        chemId: "hydrogen_fluoride", srcType: "pool",
+        src: { mass: 3000, TstoreC: 10, dikeArea: 50 },
+        met: { u: 4, dirFrom: 315, TambC: 8, cloud: 8, terrain: "urban", dateLocal: "2027-01-20T08:30" },
+        receptors: [
+          { name: "隣の製造棟（作業者 40 名）", dx: 70, dy: -70, b: bld("office", 0.5) },
+          { name: "A 北西の門（風上）", dx: -110, dy: 110, b: bld("single") },
+          { name: "B 北東の構内診療所前（風横）", dx: 180, dy: 180, b: bld("office", 0.5) },
+          { name: "物流倉庫（敷地外 南東 400 m）", dx: 280, dy: -290, b: bld("office", 0.5) },
+          { name: "中学校（南東 1.2 km）", dx: 850, dy: -850, b: bld("office", 0.5) },
+          { name: "住宅地（南東 2 km）", dx: 1400, dy: -1430, b: bld("double") },
+        ],
+      }),
+    },
+    {
+      id: "so2", label: "③ 二酸化硫黄（火災・夕方）",
+      title: "南台精化 工場 硫黄の粉じん爆発に続く火災（架空）",
+      summary: "11 月の夕方 17:30、硫黄の粉砕工程で粉じん爆発が起き、貯蔵庫の硫黄が燃え続けている。燃焼で生じる二酸化硫黄を、屋根の高さ 10 m から毎秒 1 kg、60 分間放出すると仮定した。西の風 3 m/s、気温 14 ℃、曇り（雲量 10 割）。風下（東）150 m に事務棟（従業員 25 名）、1.5 km に病院、2.5 km に小学校がある。",
+      assume: "硫黄の燃焼速度（毎秒 0.5 kg、二酸化硫黄にして 1 kg）、放出の高さ 10 m、継続 60 分、地表（市街地）は仮定です。火災の上昇気流による煙の持ち上がりは計算に入れていません。",
+      points: [
+        "AEGL-2 が 0.75 ppm と低いため、レベル 2 のゾーンが 2 km を超える。ぜん息・COPD の人、入院患者、児童を優先した屋内退避を考える。",
+        "放出の高さを 0 m に変えると、近くの事務棟の濃度がどう変わるか。高い所からの放出では近くの地表の濃度が低く出ることを確かめる。",
+        "火災が続く間は屋内の濃度もじわじわ上がる。病院の屋内の濃度を見て、窓を閉め換気・空調を止める連絡の段取りを考える。",
+      ],
+      more: `爆発そのものの影響（爆風圧）は<a href="#/blast">爆風圧</a>のページで確かめられます。`,
+      state: mk({
+        chemId: "sulfur_dioxide", srcType: "direct",
+        src: { rate: 1, durationMin: 60, releaseHeight: 10 },
+        met: { u: 3, dirFrom: 270, TambC: 14, cloud: 10, terrain: "urban", dateLocal: "2026-11-12T17:30" },
+        receptors: [
+          { name: "事務棟（従業員 25 名）", dx: 150, dy: 20, b: bld("office", 0.5) },
+          { name: "A 西門（風上）", dx: -250, dy: 30, b: bld("single") },
+          { name: "B 北側の駐車場（風横）", dx: 60, dy: 450, b: bld("single") },
+          { name: "隣接工場（東 400 m）", dx: 400, dy: -50, b: bld("office", 0.5) },
+          { name: "病院（東 1.5 km）", dx: 1500, dy: 60, b: bld("office", 0.5) },
+          { name: "小学校（東 2.5 km）", dx: 2500, dy: -150, b: bld("office", 0.5) },
+        ],
+      }),
+    },
+  ];
+  const caseOf = id => CASES.find(k => k.id === id) || null;
+  function caseState(id) { const k = caseOf(id); return k ? Object.assign(clone(k.state), { caseId: id, caseEdited: false }) : null; }
+  // ケースなしの初期状態（仮の条件）。日時は開いた時点の日本時間
+  function blankState() {
+    const c = CD.CHEMICALS[0];
+    const now = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 16);
+    return Object.assign(mk({ chemId: c.id, srcType: c.forms[0], src: {}, met: { dateLocal: now }, receptors: [] }), { caseId: null, caseEdited: false });
+  }
+
+  try { localStorage.removeItem("cd-sim-v1"); localStorage.removeItem("cd-sim-v2"); } catch (e) { /* 旧版の保存値の片づけ。できなくても動く */ }
+  let st = load() || blankState();
   let map = null, layers = null, last = null;
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -57,8 +133,11 @@
   const disclaimerHtml = (cls = "") => `<div class="note crit disclaimer ${cls}"><b>免責事項：あくまでもシミュレーションです</b><ul class="list small">${DISCLAIMER.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>`;
 
   /* ---------- 入力フォーム ---------- */
-  function render(root) {
-    st = load() || clone(CASE_DEFAULT);
+  function render(root, caseId) {
+    // #/sim/<ケース id> で開いたときはそのケースを読み込み、URL を #/sim に戻す（再読み込みで入力が消えないように）
+    const fromLink = caseState(caseId);
+    if (fromLink) { st = fromLink; save(); try { history.replaceState(null, "", "#/sim"); } catch (e) { /* URL はそのままでも動く */ } }
+    else st = load() || blankState();
     fitNext = true;
     root.innerHTML = `
     <h2 class="page">化学物質拡散シミュレーター</h2>
@@ -81,16 +160,45 @@
     return `<div class="seg" data-seg="${name}">${items.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${String(cur) === String(v)}">${l}</button>`).join("")}</div>`;
   }
 
+  /* ---------- ケースの選択 ---------- */
+  function caseCardHtml() {
+    const k = caseOf(st.caseId);
+    const info = k ? `
+      <p class="small" style="margin:10px 0 4px"><b>${esc(k.title)}</b></p>
+      <p class="small" style="margin:0 0 4px">${esc(k.summary)}</p>
+      <p class="hint">${esc(k.assume)}</p>
+      <details class="more"><summary>考えるポイント</summary><ol class="list small">${k.points.map(t => `<li>${esc(t)}</li>`).join("")}</ol><p class="hint">${k.more}</p></details>
+      <p class="hint" id="caseEdited" ${st.caseEdited ? "" : "hidden"}>読み込んだ後に条件を変えています。ケースの条件に戻すには、もう一度ケースのボタンを押してください。</p>` : `
+      <p class="hint">ケースは読み込まれていません。いまの入力は仮の初期値です。実際の条件を入力するか、練習用のケース（いずれも架空）を選んでください。</p>`;
+    return `<div class="card"><div class="card-h">ケース（練習用・架空）</div><div class="card-b">
+      <div class="seg">${CASES.map(c => `<button type="button" data-case="${c.id}" aria-pressed="${st.caseId === c.id}">${esc(c.label)}</button>`).join("")}</div>
+      ${info}
+      ${k ? `<div class="seg" style="margin-top:8px"><button type="button" class="btn sm ghost" id="btnBlank">ケースを外して初期状態に戻す</button></div>` : ""}
+    </div></div>`;
+  }
+  function touched() {
+    if (!st.caseId || st.caseEdited) return;
+    st.caseEdited = true;
+    const n = $("#caseEdited"); if (n) n.hidden = false;
+  }
+  // 地点の位置の読み方（例：東 −60・北 400 → 西へ 60 m・北へ 400 m、北北西 404 m）
+  function posText(r) {
+    const ew = Math.round(r.dx), ns = Math.round(r.dy);
+    const part = (v, plus, minus) => v === 0 ? "" : (v > 0 ? plus : minus) + "へ " + Math.abs(v).toLocaleString() + " m";
+    const d = Math.hypot(r.dx, r.dy);
+    if (d < 0.5) return "→ 発生源と同じ位置";
+    const bearing = (Math.atan2(r.dx, r.dy) * 180 / Math.PI + 360) % 360;
+    const dist = d >= 1000 ? (d / 1000).toFixed(2) + " km" : Math.round(d) + " m";
+    return "→ 発生源から" + [part(ew, "東", "西"), part(ns, "北", "南")].filter(Boolean).join("・") + (ew && ns ? `（${dirName(bearing)}の方向、直線で ${dist}）` : "");
+  }
+
   function renderForm() {
     const c = chemOf(st.chemId);
     const forms = c.forms;
     if (!forms.includes(st.srcType)) st.srcType = forms[0];
     const s = st.src, m = st.met;
     $("#simForm").innerHTML = `
-    <div class="card"><div class="card-h">ケース</div><div class="card-b">
-      <div class="seg"><button type="button" class="btn sm ghost" id="btnCase">ケース演習（東浜ソーダ工業）を読み込む</button></div>
-      <p class="hint">ケース演習の架空の事例です（液化塩素 1 t 容器の弁の破損、夏の夜 22:40、南の風 2.5 m/s、気温 27 ℃、雲量 7 割）。弁の破損口径 15 mm と地表（市街地）は仮定です。</p>
-    </div></div>
+    ${caseCardHtml()}
 
     <div class="card"><div class="card-h"><span class="step">1</span>物質</div><div class="card-b">
       <div class="field"><select class="inp" id="chem">${CD.CHEMICALS.map(x => `<option value="${x.id}" ${x.id === st.chemId ? "selected" : ""}>${x.ja}（${x.en}）</option>`).join("")}
@@ -179,28 +287,30 @@
   }
 
   function renderReceptorList() {
-    $("#rcptList").innerHTML = st.receptors.map((r, i) => `
+    $("#rcptList").innerHTML = `<p class="hint" style="margin-top:0">位置は発生源を原点にした東西・南北の距離（m）で表します。<b>東と北はプラス、西と南はマイナス</b>で入力します（例：東 −60・北 400 は、発生源から西へ 60 m・北へ 400 m の地点）。</p>` + st.receptors.map((r, i) => `
       <div class="rcpt" style="padding:8px 10px">
         <div class="row2" style="grid-template-columns: 1fr auto; align-items:center">
           <input class="inp" data-r="${i}" data-k="name" value="${esc(r.name)}" aria-label="地点名">
           <button type="button" class="btn sm ghost" data-del="${i}" aria-label="削除">削除</button></div>
         <div class="row2" style="margin-top:6px">
-          <div class="unit"><span>東</span><input class="inp" type="number" data-r="${i}" data-k="dx" value="${Math.round(r.dx)}"><span>m</span></div>
-          <div class="unit"><span>北</span><input class="inp" type="number" data-r="${i}" data-k="dy" value="${Math.round(r.dy)}"><span>m</span></div></div>
+          <div class="unit"><span>東</span><input class="inp" type="number" data-r="${i}" data-k="dx" value="${Math.round(r.dx)}" aria-label="東西の距離（東がプラス、西がマイナス）"><span>m</span></div>
+          <div class="unit"><span>北</span><input class="inp" type="number" data-r="${i}" data-k="dy" value="${Math.round(r.dy)}" aria-label="南北の距離（北がプラス、南がマイナス）"><span>m</span></div></div>
+        <p class="xs muted" style="margin:4px 0 0" data-pos="${i}">${esc(posText(r))}</p>
         <select class="inp" style="margin-top:6px" data-r="${i}" data-k="btype">${Object.entries(BLD).map(([k, l]) => `<option value="${k}" ${r.b.type === k ? "selected" : ""}>${l}</option>`).join("")}</select>
         ${r.b.type === "ach" ? `<div class="unit" style="margin-top:6px"><span>換気回数</span><input class="inp" type="number" step="0.1" min="0.05" data-r="${i}" data-k="ach" value="${r.b.ach}"><span>回/h</span></div>` : ""}
         ${r.b.type === "single" || r.b.type === "double" ? `<label class="xs" style="display:block;margin-top:4px"><input type="checkbox" data-r="${i}" data-k="sheltered" ${r.b.sheltered ? "checked" : ""}> 周囲に建物や木があり風が遮られる</label>` : ""}
-      </div>`).join("") || `<p class="hint">地点はまだありません。</p>`;
+      </div>`).join("") + (st.receptors.length ? "" : `<p class="hint">地点はまだありません。「地点を追加」または地図のクリックで追加します。</p>`);
   }
 
   function bindForm() {
     const f = $("#simForm");
     f.onchange = f.oninput = e => {
       const t = e.target;
+      touched();
       if (t.dataset.r !== undefined) {
         const r = st.receptors[+t.dataset.r], k = t.dataset.k;
         if (k === "name") r.name = t.value;
-        else if (k === "dx" || k === "dy") r[k] = +t.value || 0;
+        else if (k === "dx" || k === "dy") { r[k] = +t.value || 0; const p = f.querySelector(`[data-pos="${t.dataset.r}"]`); if (p) p.textContent = posText(r); }
         else if (k === "btype") { r.b.type = t.value; if (e.type === "change") renderReceptorList(); }
         else if (k === "ach") r.b.ach = Math.max(0.05, +t.value || 0.5);
         else if (k === "sheltered") r.b.sheltered = t.checked;
@@ -225,7 +335,9 @@
     f.onclick = e => {
       const b = e.target.closest("button");
       if (!b) return;
-      if (b.id === "btnCase") { st = clone(CASE_DEFAULT); renderForm(); fitNext = true; compute(); return; }
+      if (b.dataset.case !== undefined) { st = caseState(b.dataset.case); renderForm(); fitNext = true; compute(); return; }
+      if (b.id === "btnBlank") { st = blankState(); renderForm(); fitNext = true; compute(); return; }
+      touched();
       if (b.id === "addR") { st.receptors.push({ name: "地点 " + (st.receptors.length + 1), dx: 500, dy: 0, b: { type: "single", sheltered: false, ach: 1 } }); renderReceptorList(); compute(); return; }
       if (b.dataset.del !== undefined) { st.receptors.splice(+b.dataset.del, 1); renderReceptorList(); compute(); return; }
       const seg = b.closest("[data-seg]");
@@ -297,7 +409,7 @@
   }
 
   /* ---------- 結果 ---------- */
-  const fmt = v => v == null ? "—" : v >= 100 ? Math.round(v).toLocaleString() : v >= 10 ? String(+v.toFixed(1)) : v >= 1 ? String(+v.toFixed(2)) : v > 0 ? String(+v.toPrecision(2)) : "0";
+  const fmt = v => v == null ? "—" : v >= 100 ? Math.round(v).toLocaleString() : v >= 10 ? String(+v.toFixed(1)) : v >= 1 ? String(+v.toFixed(2)) : v >= 1e-3 ? String(+v.toPrecision(2)) : v > 0 ? "0.001 未満" : "0";
   const fmtD = m => m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + " km" : Math.round(m / 10) * 10 + " m";
   const toPpm = mg => M.mgToPpm(mg, last.inp.chem.mw, last.inp.met.Tamb);
 
@@ -309,7 +421,10 @@
     const hint = $("#stabHint"); if (hint) hint.textContent = "判定結果：" + stabTxt;
     const zoneCls = { 3: "z3", 2: "z2", 1: "z1" };
     const lvName = { 3: "生命に危険", 2: "不可逆・避難困難", 1: "不快・刺激" };
+    const k = caseOf(st.caseId);
     $("#simOut").innerHTML = `
+    ${k ? `<p class="small muted" style="margin:0 0 8px">ケース：${esc(k.title)}${st.caseEdited ? "（条件を変更）" : ""}</p>`
+      : `<div class="note"><b>ケースは読み込まれていません。</b>仮の初期値で計算した例です。物質・発生源・気象を実際の条件に合わせるか、練習用のケースを選んでください。</div>`}
     <div class="card">
       <div class="card-h">脅威ゾーン<span class="right xs muted">${esc(c.ja)}／${SRC_LABEL[inp.type]}／${sim.model === "dense" ? "重いガスモデル" : "ガウスモデル"}</span></div>
       <div class="zone-legend">${L.map(l => `<span><i style="background:var(--z${l.level})"></i>${esc(l.name)}${l.ppm != null ? " " + fmt(l.ppm) + " ppm" : ""}</span>`).join("")}
@@ -415,7 +530,7 @@
       return `<td class="r ${lvl >= 2 ? "diff" : ""}">${fmt(v)}${lvl ? `<br><span class="xs">AEGL-${lvl} 超</span>` : ""}</td>`;
     }).join("");
     return `<div class="rcpt">
-      <h4>${esc(r.name)} <span class="xs muted">発生源から${dirName(bearing)}へ ${fmtD(dist)}${x <= 0 ? "（風上側）" : Math.abs(o.y) > x ? "（風横）" : "（風下側）"}</span></h4>
+      <h4>${esc(r.name)} <span class="xs muted">発生源から${dirName(bearing)}へ ${fmtD(dist)}${Math.abs(o.y) >= Math.abs(x) ? "（風横）" : x < 0 ? "（風上側）" : "（風下側）"}</span></h4>
       <div class="kpis" style="margin-bottom:8px">
         <div class="kpi"><div class="k">屋外の最大濃度</div><div class="v">${fmt(peakO)} <small>ppm</small></div>${over(peakO)}</div>
         <div class="kpi"><div class="k">屋内の最大濃度</div><div class="v">${fmt(peakI)} <small>ppm</small></div>${over(peakI)} <span class="xs muted">換気 ${res.ach.toFixed(2)} 回/h</span></div>
@@ -537,12 +652,13 @@
     L.marker(toLL(-arrowLen * 1.25, 0), { interactive: false, icon: L.divIcon({ className: "", html: `<span class="marker-lbl">風 ${dirName(st.met.dirFrom)} ${st.met.u} m/s →</span>`, iconSize: [130, 20], iconAnchor: [65, 10] }) }).addTo(map);
 
     const srcM = L.marker(ll(0, 0), { draggable: true, title: "発生源", icon: L.divIcon({ className: "", html: '<div class="src-icon"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }) }).addTo(map).bindTooltip("発生源（ドラッグで移動）");
-    srcM.on("dragend", e => { const p = e.target.getLatLng(); const [ox, oy] = dxy(p); st.met.lat = p.lat; st.met.lon = p.lng; st.receptors.forEach(r => { r.dx -= ox; r.dy -= oy; }); window.__cdView = { c: map.getCenter(), z: map.getZoom() }; renderReceptorList(); compute(); });
+    srcM.on("dragend", e => { touched(); const p = e.target.getLatLng(); const [ox, oy] = dxy(p); st.met.lat = p.lat; st.met.lon = p.lng; st.receptors.forEach(r => { r.dx -= ox; r.dy -= oy; }); window.__cdView = { c: map.getCenter(), z: map.getZoom() }; renderReceptorList(); compute(); });
     st.receptors.forEach((r, i) => {
       const m = L.marker(ll(r.dx, r.dy), { draggable: true, icon: L.divIcon({ className: "", html: `<span class="marker-lbl">● ${esc(r.name)}</span>`, iconSize: null, iconAnchor: [6, 10] }) }).addTo(map);
-      m.on("dragend", e => { const [x, y] = dxy(e.target.getLatLng()); r.dx = x; r.dy = y; window.__cdView = { c: map.getCenter(), z: map.getZoom() }; renderReceptorList(); compute(); });
+      m.on("dragend", e => { touched(); const [x, y] = dxy(e.target.getLatLng()); r.dx = x; r.dy = y; window.__cdView = { c: map.getCenter(), z: map.getZoom() }; renderReceptorList(); compute(); });
     });
     map.on("click", e => {
+      touched();
       const [x, y] = dxy(e.latlng);
       st.receptors.push({ name: "地点 " + (st.receptors.length + 1), dx: x, dy: y, b: { type: "single", sheltered: false, ach: 1 } });
       window.__cdView = { c: map.getCenter(), z: map.getZoom() };
@@ -559,5 +675,8 @@
     window.__cdView = null;
   }
 
-  window.CDSim = { render, setCustom(c) { st.chemId = "custom"; st.custom = c; st.srcType = "direct"; st.loc.family = "custom"; st.loc.custom = [c.pac[2], c.pac[1], c.pac[0]]; save(); } };
+  window.CDSim = { render,
+    // 物質ページの「この物質で拡散を推計」：いまの入力（なければ初期状態）の物質だけを差し替える
+    useChem(id) { st = load() || blankState(); if (st.chemId !== id) { st.chemId = id; touched(); } save(); },
+    setCustom(c) { st = load() || blankState(); touched(); st.chemId = "custom"; st.custom = c; st.srcType = "direct"; st.loc.family = "custom"; st.loc.custom = [c.pac[2], c.pac[1], c.pac[0]]; save(); } };
 })();
